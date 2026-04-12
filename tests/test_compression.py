@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from kernels.compression_int4 import dequant_decompress_from_int4_to_float16, quant_compress_to_int4
-from tests.utils import save_heatmap
+from tests.utils import assert_reconstruction, get_correlation
 
 
 @pytest.fixture(autouse=True)
@@ -68,35 +68,6 @@ def test_with_ones_weights(rows, cols, quant_block_size, compress_factor, sign):
     )
     assert torch.allclose(weights_recon, weights), (
         f"Reconstucted weights match with original expected: {weights=} actual: {weights_recon=}"
-    )
-
-
-def assert_reconstruction(
-    original: torch.Tensor,
-    reconstructed: torch.Tensor,
-    atol: float = 0.1,
-    test_name: str = "",
-    save_path: str = None,
-    compare_mse: bool = False,
-):
-    if compare_mse:
-        diff = (original - reconstructed) ** 2
-        failed = torch.mean(diff) >= atol
-    else:
-        failed = not torch.allclose(original, reconstructed, atol=atol)
-        diff = (original - reconstructed).abs()
-
-    if failed and save_path:
-        save_heatmap(diff, save_path)
-
-    assert not failed, (
-        f"\n{'=' * 50}\n"
-        f"Reconstruction failed: {test_name}\n"
-        f"  max error:  {diff.max():.6f}  (atol={atol})\n"
-        f"  mean error: {diff.mean():.6f}\n"
-        f"  shape:      {original.shape}\n"
-        f"  saved to:   {save_path}\n"
-        f"{'=' * 50}"
     )
 
 
@@ -210,3 +181,6 @@ def test_with_rand_weights(rows, cols, quant_block_size, compress_factor, reques
         save_path=f"tests/images/{request.node.name}",
         compare_mse=True,
     )
+
+    correlation = get_correlation(weights, weights_recon)
+    assert correlation >= 0.99, f"Correlation must be more than 0.95, actual correlation is {correlation}"
