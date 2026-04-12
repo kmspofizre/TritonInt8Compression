@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
     "pytest>=9.0.3",
     "torch>=2.10.0",
     "tqdm>=4.67.3",
+    "triton-viz>=3.0",
     "unsloth",
 ]
 
