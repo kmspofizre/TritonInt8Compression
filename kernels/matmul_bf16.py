@@ -2,6 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def matmul_kernel(
     a_ptr, b_ptr, c_ptr,
@@ -11,6 +12,7 @@ def matmul_kernel(
     stride_cm, stride_cn,
     BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    OUTPUT_DTYPE: tl.constexpr,
 ):
     # L2 Cache Optimization
     pid = tl.program_id(0)
@@ -43,7 +45,7 @@ def matmul_kernel(
         b_ptrs += BLOCK_SIZE_K * stride_bk
 
     # Выгрузка результата (каст обратно в bfloat16)
-    c = accumulator.to(tl.bfloat16)
+    c = accumulator.to(OUTPUT_DTYPE)
     
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
@@ -55,7 +57,7 @@ def matmul(a, b):
     assert a.is_cuda and b.is_cuda
     M, K = a.shape
     K, N = b.shape
-    c = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
+    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     
     grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),)
     
@@ -65,7 +67,10 @@ def matmul(a, b):
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         c.stride(0), c.stride(1),
-        BLOCK_SIZE_M=128, BLOCK_SIZE_N=128, BLOCK_SIZE_K=32,
+        BLOCK_SIZE_M=128, 
+        BLOCK_SIZE_N=128, 
+        BLOCK_SIZE_K=32,
         GROUP_SIZE_M=8,
+        OUTPUT_DTYPE=tl.float16 if a.dtype == torch.float16 else tl.bloat16,
     )
     return c

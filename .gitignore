@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Pytest
+.pytest_cache/
+**/.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Virtual env (uv)
+.venv/
