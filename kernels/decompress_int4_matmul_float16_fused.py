@@ -151,6 +151,10 @@ def decompress_int4_matmul_float16_fused(
 
     assert K == K_compressed * compress_factor, f"Mismatch in shape K != K_compressed * compress_factor {K} != {K_compressed} * {compress_factor}"
     quant_block_size = K // K_scale
+    assert quant_block_size >= 16, (
+        "quant_block_size must be >= 16 for tl.dot compatibility, "
+        f"got quant_block_size={quant_block_size}"
+    )
 
     output = torch.empty(
         (M, N), device=weights_compressed.device, dtype=torch.float16

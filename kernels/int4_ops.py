@@ -1,11 +1,30 @@
-from __future__ import annotations
-
 import torch
 
 from kernels.compression_int4 import quant_compress_to_int4
 from kernels.decompress_int4_matmul_float16_fused import (
     decompress_int4_matmul_float16_fused,
 )
+
+_BLOCK_SIZE_CANDIDATES = (128, 64, 32, 16)
+
+
+def _choose_quant_block_size(cols: int, requested: int, compress_factor: int) -> int:
+    candidates = [requested] + [x for x in _BLOCK_SIZE_CANDIDATES if x != requested]
+    for block_size in candidates:
+        if block_size < 16:
+            continue
+        if cols % block_size != 0:
+            continue
+        n_blocks_per_row = cols // block_size
+        if n_blocks_per_row % compress_factor != 0:
+            continue
+        return block_size
+
+    raise ValueError(
+        "Cannot choose valid quant_block_size for int4 packing: "
+        f"cols={cols}, requested={requested}, compress_factor={compress_factor}. "
+        "Require block_size >= 16, cols % block_size == 0, and (cols // block_size) % compress_factor == 0."
+    )
 
 
 def quantize_to_int4_no_pack(
@@ -38,10 +57,16 @@ def pack_int4_to_int32(
     """
     Packs 8 int4 values into uint32 and returns (packed, scales).
     """
+    cols = weights.shape[1]
+    effective_block_size = _choose_quant_block_size(
+        cols=cols,
+        requested=quant_block_size,
+        compress_factor=8,
+    )
     packed, scale = quant_compress_to_int4(
         weights=weights.to(torch.float16).contiguous(),
         compress_factor=8,
-        quant_block_size=quant_block_size,
+        quant_block_size=effective_block_size,
     )
     return packed, scale
 
