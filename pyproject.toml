@@ -9,7 +9,7 @@ dependencies = [
     "matplotlib>=3.10.8",
     "pytest>=9.0.3",
     "pytest-xdist>=3.8.0",
-    "torch>=2.10.0",
+#    "torch>=2.10.0",
     "tqdm>=4.67.3",
     "triton-viz>=3.0",
     "unsloth",

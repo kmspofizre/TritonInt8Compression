@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kernels.int4_ops import matmul_x16w4_dequant
+from kernels.int4_ops import matmul_x16w4_dequant, pack_int4_to_int32
 
 QuantBackend = Literal["fp16_baseline", "triton_int4"]
 
@@ -14,7 +14,7 @@ class QuantLinear(nn.Module):
     Quantized linear layer integration point.
 
     `fp16_baseline` backend is production-ready for integration tests.
-    `triton_int4` backend depends on kernels owned by other participants.
+    `triton_int4` backend uses fused int4 kernels from `kernels/`.
     """
 
     def __init__(
@@ -25,11 +25,13 @@ class QuantLinear(nn.Module):
         weight_dtype: torch.dtype = torch.float16,
         device: torch.device | str | None = None,
         backend: QuantBackend = "fp16_baseline",
+        quant_block_size: int = 128,
     ) -> None:
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.backend = backend
+        self.quant_block_size = quant_block_size
 
         self.weight = nn.Parameter(
             torch.empty(out_features, in_features, dtype=weight_dtype, device=device)
@@ -40,16 +42,17 @@ class QuantLinear(nn.Module):
             else None
         )
 
-        # Placeholders for kernels owned by other participants.
-        self.register_buffer("packed_weight_int32", torch.empty(0, dtype=torch.int32), persistent=False)
-        self.register_buffer("weight_scale", torch.empty(0, dtype=torch.float32), persistent=False)
-        self.register_buffer("weight_zero_point", torch.empty(0, dtype=torch.float32), persistent=False)
+        # Prepared quantized representation for triton_int4 backend.
+        self.register_buffer("packed_weight_int32", torch.empty(0, dtype=torch.uint32), persistent=False)
+        self.register_buffer("weight_scale", torch.empty(0, dtype=torch.float16), persistent=False)
+        self.register_buffer("weight_zero_point", torch.empty(0, dtype=torch.float16), persistent=False)
 
     @classmethod
     def from_linear(
         cls,
         layer: nn.Linear,
         backend: QuantBackend = "fp16_baseline",
+        quant_block_size: int = 128,
     ) -> "QuantLinear":
         quant_layer = cls(
             in_features=layer.in_features,
@@ -58,37 +61,50 @@ class QuantLinear(nn.Module):
             weight_dtype=layer.weight.dtype,
             device=layer.weight.device,
             backend=backend,
+            quant_block_size=quant_block_size,
         )
 
         with torch.no_grad():
             quant_layer.weight.copy_(layer.weight)
             if layer.bias is not None and quant_layer.bias is not None:
                 quant_layer.bias.copy_(layer.bias)
+            if backend == "triton_int4":
+                quant_layer.prepare_int4_weights()
         return quant_layer
 
     def prepare_int4_weights(self) -> None:
-        """
-        Zhenya/Kirill ownership:
-        - quantize fp16/bf16 weights to int4
-        - pack int4 into int32
-        """
-        pass
+        if not self.weight.is_cuda:
+            raise RuntimeError("triton_int4 backend requires CUDA weights")
+        packed, scale = pack_int4_to_int32(
+            self.weight.detach(),
+            quant_block_size=self.quant_block_size,
+        )
+        self.packed_weight_int32 = packed
+        self.weight_scale = scale
+        # Symmetric quantization in current kernels does not use zero points.
+        self.weight_zero_point = torch.empty(
+            0,
+            dtype=torch.float16,
+            device=self.weight.device,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.backend == "fp16_baseline":
             return F.linear(x, self.weight, self.bias)
 
         if self.backend == "triton_int4":
+            if self.packed_weight_int32.numel() == 0:
+                self.prepare_int4_weights()
+
+            original_shape = x.shape[:-1]
+            x_2d = x.reshape(-1, self.in_features)
             result = matmul_x16w4_dequant(
-                x,
+                x_2d,
                 self.packed_weight_int32,
                 self.weight_scale,
                 self.weight_zero_point,
             )
-            if result is None:
-                raise NotImplementedError(
-                    "triton_int4 backend is blocked by pass-stubs in kernels/int4_ops.py"
-                )
+            result = result.reshape(*original_shape, self.out_features)
             if self.bias is not None:
                 result = result + self.bias
             return result
