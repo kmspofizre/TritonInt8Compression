@@ -33,8 +33,8 @@ def _quant_compress_kernel_to_int4(
 
         x_scaled = x / scale
         x_scaled = tl.maximum(tl.minimum(x_scaled, 7), -8) + 8
-
-        x_uint8 = x_scaled.cast(OUTPUT_DTYPE)
+        # Triton cast truncates, so shift by 0.5 to emulate nearest rounding in [0, 15].
+        x_uint8 = (x_scaled + 0.5).cast(OUTPUT_DTYPE)
         out += x_uint8 << (i * 4)
 
         input_start += BLOCK_SIZE

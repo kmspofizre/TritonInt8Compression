@@ -68,3 +68,20 @@ def test_triton_int4_forward_2d_and_3d():
     assert y3d.dtype == torch.float16
     assert torch.isfinite(y3d).all()
 
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_triton_int4_forward_is_reasonably_close_to_fp16():
+    torch.manual_seed(0)
+    layer = nn.Linear(128, 96, bias=True, device="cuda", dtype=torch.float16)
+    q = QuantLinear.from_linear(layer, backend="triton_int4", quant_block_size=128)
+    x = torch.randn((64, 128), device="cuda", dtype=torch.float16)
+
+    y_ref = layer(x)
+    y_q = q(x)
+    diff = (y_q - y_ref).float()
+
+    rel_l2 = diff.norm() / y_ref.float().norm()
+    mae = diff.abs().mean()
+
+    assert rel_l2.item() < 0.1
+    assert mae.item() < 0.05
