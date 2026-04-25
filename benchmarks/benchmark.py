@@ -1,4 +1,5 @@
 import argparse
+import gc
 from dataclasses import asdict, dataclass
 from statistics import median
 from typing import Callable, Sequence
@@ -163,6 +164,12 @@ def _calc_tflops(m: int, n: int, k: int, latency_ms: float) -> float:
     return flops / (latency_ms / 1000.0) / 1e12
 
 
+def cleanup_cuda() -> None:
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+
+
 def benchmark_matmul_shapes(
     shapes: Sequence[tuple[int, int, int]],
     kernel: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
@@ -206,6 +213,8 @@ def benchmark_matmul_shapes(
                     mean_abs_error=mean_abs_error,
                 )
             )
+
+            cleanup_cuda()
     return results
 
 
@@ -219,9 +228,13 @@ def _parse_shape(shape_spec: str) -> tuple[int, int, int]:
 
 def _default_shapes() -> list[tuple[int, int, int]]:
     return [
+        (128, 128, 128),
         (512, 512, 512),
         (1024, 1024, 1024),
         (2048, 2048, 2048),
+        (4096, 4096, 4096),
+        (8192, 8192, 8192),
+        (16_384, 16_384, 16_384),
     ]
 
 

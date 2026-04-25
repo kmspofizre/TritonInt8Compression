@@ -87,6 +87,7 @@ class QuantLinear(nn.Module):
             dtype=torch.float16,
             device=self.weight.device,
         )
+        self.weight = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.backend == "fp16_baseline":
