@@ -33,8 +33,8 @@ def _quant_compress_kernel_to_int4(
 
         x_scaled = x / scale
         x_scaled = tl.maximum(tl.minimum(x_scaled, 7), -8) + 8
-
-        x_uint8 = x_scaled.cast(OUTPUT_DTYPE)
+        # Triton cast truncates, so shift by 0.5 to emulate nearest rounding in [0, 15].
+        x_uint8 = (x_scaled + 0.5).cast(OUTPUT_DTYPE)
         out += x_uint8 << (i * 4)
 
         input_start += BLOCK_SIZE
@@ -62,6 +62,11 @@ def quant_compress_to_int4(weights: torch.Tensor, compress_factor: int = 2, quan
 
     output_cols = cols // compress_factor
     n_blocks_per_row = cols // quant_block_size
+    assert n_blocks_per_row % compress_factor == 0, (
+        "Number of quant blocks per row must be divisible by compress_factor, "
+        f"got n_blocks_per_row={n_blocks_per_row}, compress_factor={compress_factor}. "
+        "Choose a smaller quant_block_size."
+    )
     output = torch.empty((rows, output_cols), device=weights.device, dtype=output_dtype)
     scale = torch.empty((rows, n_blocks_per_row), device=weights.device, dtype=torch.float16)
 
