@@ -71,6 +71,6 @@ def matmul(a, b):
         BLOCK_SIZE_N=128, 
         BLOCK_SIZE_K=32,
         GROUP_SIZE_M=8,
-        OUTPUT_DTYPE=tl.float16 if a.dtype == torch.float16 else tl.bloat16,
+        OUTPUT_DTYPE=tl.float16 if a.dtype == torch.float16 else tl.bfloat16,
     )
     return c

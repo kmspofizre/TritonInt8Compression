@@ -88,6 +88,7 @@ def _decompress_int4_matmul_float16_fused_kernel(
     rk = tl.arange(0, BLOCK_SIZE_K)
 
     mask_m = rm < M
+    mask_n = rn < N
 
     stride_xm, stride_xk = K, 1
     stride_wk, stride_wn = 1, K_compressed
@@ -99,11 +100,11 @@ def _decompress_int4_matmul_float16_fused_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for _ in range(0, tl.cdiv(K, BLOCK_SIZE_K * COMPRESS_FACTOR)):
-        weights = tl.load(weights_ptrs)
+        weights = tl.load(weights_ptrs, mask=mask_n[None, :], other=0)
         
         for _ in tl.static_range(COMPRESS_FACTOR):
             weights_local = (weights & 0xF).cast(tl.float16)
-            scale = tl.load(scale_ptrs)
+            scale = tl.load(scale_ptrs, mask=mask_n[None, :], other=1.0)
 
             weights_recon = (weights_local - 8.0) * scale
             x = tl.load(x_ptrs, mask=mask_m[:, None], other=0.0)
@@ -123,7 +124,8 @@ def _decompress_int4_matmul_float16_fused_kernel(
 
     stride_om, stride_on = N, 1
     output_ptrs = output_ptr + stride_om * offs_cm[:, None] + stride_on * offs_cn[None, :]
-    tl.store(output_ptrs, accum_casted, mask=mask_m[:, None])
+    output_mask = mask_m[:, None] & mask_n[None, :]
+    tl.store(output_ptrs, accum_casted, mask=output_mask)
 
 
 def decompress_int4_matmul_float16_fused(
@@ -149,6 +151,10 @@ def decompress_int4_matmul_float16_fused(
 
     assert K == K_compressed * compress_factor, f"Mismatch in shape K != K_compressed * compress_factor {K} != {K_compressed} * {compress_factor}"
     quant_block_size = K // K_scale
+    assert quant_block_size >= 16, (
+        "quant_block_size must be >= 16 for tl.dot compatibility, "
+        f"got quant_block_size={quant_block_size}"
+    )
 
     output = torch.empty(
         (M, N), device=weights_compressed.device, dtype=torch.float16
