@@ -26,8 +26,10 @@ class QuantLinear(nn.Module):
         device: torch.device | str | None = None,
         backend: QuantBackend = "fp16_baseline",
         quant_block_size: int = 128,
+        compress_factor: int | None = 8
     ) -> None:
         super().__init__()
+        self.compress_factor = compress_factor
         self.in_features = in_features
         self.out_features = out_features
         self.backend = backend
