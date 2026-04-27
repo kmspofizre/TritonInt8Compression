@@ -13,53 +13,92 @@ def get_pid(pid, GROUP_SIZE_M, num_pid_m, num_pid_n):
     pid_n = (pid % num_pid_in_group) // group_size_m
     return pid_m, pid_n
 
+
+def filter_invalid_configs(configs, named_args, **kwargs):
+    valid_configs = []
+    
+    K = kwargs["K"]
+    M = kwargs["M"]
+    N = kwargs["N"]
+    COMPRESS_FACTOR = kwargs["COMPRESS_FACTOR"]
+    BLOCK_SIZE_K = kwargs.get("BLOCK_SIZE_K")
+
+    for config in configs:
+        BLOCK_SIZE_M = config.kwargs.get("BLOCK_SIZE_M")
+        BLOCK_SIZE_N = config.kwargs.get("BLOCK_SIZE_N")
+        SPLIT_K = config.kwargs.get("SPLIT_K")
+
+        if K >= BLOCK_SIZE_K * COMPRESS_FACTOR * SPLIT_K \
+            and K % (BLOCK_SIZE_K * COMPRESS_FACTOR * SPLIT_K) == 0 \
+            and N >= BLOCK_SIZE_N \
+            and N % BLOCK_SIZE_N == 0 \
+            and 2 * M >= BLOCK_SIZE_M:
+            valid_configs.append(config)
+
+    if len(valid_configs) == 0:
+        return [configs[0]]
+        
+    return valid_configs
+
 @triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 64,  'BLOCK_SIZE_N': 256, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64,  'BLOCK_SIZE_N': 128, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64,  'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 32,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
-	    triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-	    triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
-	    triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=2, num_warps=4),
-	    triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
-	    triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
-	    triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-	    triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
-	    triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
-	    triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 64,  'BLOCK_SIZE_N': 256, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64,  'BLOCK_SIZE_N': 128, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64,  'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 32,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-		triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=2, num_warps=4),
-		triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
-		triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
-		triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-		triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64,  'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
-		triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
-		triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-		triton.Config({'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 16,  'BLOCK_SIZE_N': 256, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 16,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 16,  'BLOCK_SIZE_N': 256, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 16,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
+    configs= [
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 256,'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16,'GROUP_SIZE_M': 8}, num_stages=1, num_warps=2),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 4,  'BLOCK_SIZE_N': 256,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 128,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 4,  'BLOCK_SIZE_N': 128,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 1,  'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+        triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 32,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 8}, num_stages=2, num_warps=4),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16, 'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 64,'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 1, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 1,'GROUP_SIZE_M': 8}, num_stages=1, num_warps=2),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 4,  'BLOCK_SIZE_N': 256,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 128,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 4,  'BLOCK_SIZE_N': 128,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 1,  'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+        triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 8,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 8}, num_stages=2, num_warps=4),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16, 'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 64,'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 2, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 1,'GROUP_SIZE_M': 8}, num_stages=1, num_warps=2),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 4,  'BLOCK_SIZE_N': 256,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 128,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 4,  'BLOCK_SIZE_N': 128,'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 16, 'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 1,  'BLOCK_SIZE_N': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+        triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 8,  'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 8}, num_stages=2, num_warps=4),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 1, 'BLOCK_SIZE_N': 16, 'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 4, 'BLOCK_SIZE_N': 64, 'GROUP_SIZE_M': 16}, num_stages=4, num_warps=4),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 64,'GROUP_SIZE_M': 16}, num_stages=3, num_warps=8),
+	    triton.Config({'SPLIT_K': 4, 'BLOCK_SIZE_M': 8, 'BLOCK_SIZE_N': 32,'GROUP_SIZE_M': 16}, num_stages=2, num_warps=4),
     ],
-    key=["M", "N", "K"],
+    key=["M", "N", "K", "BLOCK_SIZE_K", "COMPRESS_FACTOR"],
+    reset_to_zero=['output_ptr'],
+    prune_configs_by={'early_config_prune': filter_invalid_configs},
+    cache_results=True,
 )
 @triton.jit
 def _decompress_int4_matmul_float16_fused_kernel(
@@ -76,9 +115,12 @@ def _decompress_int4_matmul_float16_fused_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    SPLIT_K: tl.constexpr,
     COMPRESS_FACTOR: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    pid_k = tl.program_id(1)
+
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
     pid_m, pid_n = get_pid(pid, GROUP_SIZE_M, num_pid_m, num_pid_n)
@@ -87,35 +129,43 @@ def _decompress_int4_matmul_float16_fused_kernel(
     rn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     rk = tl.arange(0, BLOCK_SIZE_K)
 
+    rk = tl.max_contiguous(tl.multiple_of(tl.arange(0, BLOCK_SIZE_K), BLOCK_SIZE_K), BLOCK_SIZE_K)  
+    rn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_SIZE_N), BLOCK_SIZE_N)
+
     mask_m = rm < M
     mask_n = rn < N
+
+    tl.static_assert(K_scale % SPLIT_K == 0, "K must be divisible by SPLIT_K")
 
     stride_xm, stride_xk = K, 1
     stride_wk, stride_wn = 1, K_compressed
     stride_sk, stride_sn = 1, K_scale
 
-    x_ptrs = x_ptr + (rm[:, None] * stride_xm + rk[None, :] * stride_xk)
-    weights_ptrs = weights_ptr + (rk[:, None] * stride_wk + rn[None, :] * stride_wn)
-    scale_ptrs = scale_ptr + (rn[None, :] * stride_sn)
+    x_ptrs = x_ptr + (rm[:, None] * stride_xm + rk[None, :] * stride_xk) + pid_k * (K // SPLIT_K) * stride_xk
+    weights_ptrs = weights_ptr + (rk[:, None] * stride_wk + rn[None, :] * stride_wn) + pid_k * (K_compressed // SPLIT_K) * stride_wk
+    scale_ptrs = scale_ptr + (rn[None, :] * stride_sn) + pid_k * (K_scale // SPLIT_K) * stride_sk
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for _ in range(0, tl.cdiv(K, BLOCK_SIZE_K * COMPRESS_FACTOR)):
-        weights = tl.load(weights_ptrs, mask=mask_n[None, :], other=0)
-        
-        for _ in tl.static_range(COMPRESS_FACTOR):
-            weights_local = (weights & 0xF).cast(tl.float16)
-            scale = tl.load(scale_ptrs, mask=mask_n[None, :], other=1.0)
 
-            weights_recon = (weights_local - 8.0) * scale
-            x = tl.load(x_ptrs, mask=mask_m[:, None], other=0.0)
+    DTYPE = tl.uint8 if COMPRESS_FACTOR == 2 else tl.uint32
+    weights = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=DTYPE)
+
+    for i in tl.static_range(0, K_scale // SPLIT_K):
+        local_step = i % COMPRESS_FACTOR
+        if local_step == 0:
+            weights = tl.load(weights_ptrs, mask=mask_n[None, :], other=0)
+            weights_ptrs += BLOCK_SIZE_K * stride_wk
             
-            accumulator = tl.dot(x, weights_recon, accumulator)
+        weights_local = ((weights >> (local_step * 4)) & 0xF).to(tl.float16)
+        scale = tl.load(scale_ptrs, mask=mask_n[None, :], other=0.0)
 
-            x_ptrs += BLOCK_SIZE_K * stride_xk
+        weights_recon = (weights_local - 8.0) * scale
+        x = tl.load(x_ptrs, mask=mask_m[:, None], other=0.0)
+        
+        accumulator = tl.dot(x, weights_recon, accumulator, input_precision="tf32")
 
-            weights >>= 4
-            scale_ptrs += stride_sk
-        weights_ptrs += BLOCK_SIZE_K * stride_wk
+        x_ptrs += BLOCK_SIZE_K * stride_xk
+        scale_ptrs += stride_sk
 
     accum_casted = accumulator.to(tl.float16)
     
@@ -125,7 +175,11 @@ def _decompress_int4_matmul_float16_fused_kernel(
     stride_om, stride_on = N, 1
     output_ptrs = output_ptr + stride_om * offs_cm[:, None] + stride_on * offs_cn[None, :]
     output_mask = mask_m[:, None] & mask_n[None, :]
-    tl.store(output_ptrs, accum_casted, mask=output_mask)
+
+    if SPLIT_K == 1:
+        tl.store(output_ptrs, accum_casted, mask=output_mask)
+    else:
+        tl.atomic_add(output_ptrs, accum_casted, mask=output_mask)
 
 
 def decompress_int4_matmul_float16_fused(
@@ -156,12 +210,12 @@ def decompress_int4_matmul_float16_fused(
         f"got quant_block_size={quant_block_size}"
     )
 
-    output = torch.empty(
+    output = torch.zeros(
         (M, N), device=weights_compressed.device, dtype=torch.float16
     )
 
     grid = lambda meta: (
-        triton.cdiv(meta["M"], meta["BLOCK_SIZE_M"]) * triton.cdiv(meta["N"], meta["BLOCK_SIZE_N"]),
+        (triton.cdiv(M, meta["BLOCK_SIZE_M"]) * triton.cdiv(N, meta["BLOCK_SIZE_N"]), meta['SPLIT_K'])
     )
 
     _decompress_int4_matmul_float16_fused_kernel[grid](

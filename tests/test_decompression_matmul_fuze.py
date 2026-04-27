@@ -19,10 +19,10 @@ def fix_seed():
 
 
 @pytest.mark.parametrize("batch_size", [1, 4, 16])
-@pytest.mark.parametrize("rows", [32, 64, 128])
-@pytest.mark.parametrize("cols", [128, 256, 512, 1024])
 @pytest.mark.parametrize("quant_block_size", [32, 64, 128])
 @pytest.mark.parametrize("compress_factor", [2, 8])
+@pytest.mark.parametrize("rows", [32, 64, 128])
+@pytest.mark.parametrize("cols", [128, 256, 512, 1024])
 def test_with_masked_ones_weights(batch_size, rows, cols, quant_block_size, compress_factor):
     if cols < quant_block_size * compress_factor:
         pytest.skip(f"Not enough cols. Cols should be not less quant_block_size * compress_factor, but {quant_block_size}*{compress_factor} > {cols}")

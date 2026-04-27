@@ -1,5 +1,7 @@
 # Python cache
 __pycache__/
+.triton_cache_tests/
+unsloth_compiled_cache/
 **/__pycache__/
 *.py[cod]
 *.pyo
