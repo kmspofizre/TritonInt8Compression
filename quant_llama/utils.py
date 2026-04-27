@@ -20,6 +20,7 @@ def replace_llama_linears_with_triton_quant(
     target_names: Optional[Set[str]] = None,
     backend: QuantBackend = "fp16_baseline",
     quant_block_size: int = 128,
+    compress_factor: int = 8,
 ) -> int:
     """Recursively replace selected `nn.Linear` modules with `QuantLinear`."""
     replaced_count = 0
@@ -36,6 +37,7 @@ def replace_llama_linears_with_triton_quant(
                         child_module,
                         backend=backend,
                         quant_block_size=quant_block_size,
+                        compress_factor=compress_factor,
                     ),
                 )
                 replaced_count += 1
