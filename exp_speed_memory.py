@@ -15,7 +15,7 @@ QUANT_BLOCK_SIZE_CANDIDATES = (128, 64, 32)
 PLOT_DIR = Path("benchmarks") / "plots"
 PLOT_PATH = PLOT_DIR / "speed_vs_quant_block_size.png"
 # MLP-only quantization for Llama blocks (attention and lm_head stay FP16).
-MLP_TARGET_NAMES = {"gate_proj", "up_proj", "down_proj"}
+MLP_TARGET_NAMES = {"gate_proj", "up_proj", "down_proj", "q_proj", "k_proj", "v_proj", "o_proj"}
 
 
 def cleanup_cuda() -> None:
@@ -82,12 +82,13 @@ def measure_generation_speed(
     return num_tokens / (end_time - start_time)
 
 
-def quantize_mlp_only(model: torch.nn.Module, quant_block_size: int) -> int:
+def quantize_mlp_only(model: torch.nn.Module, quant_block_size: int, compress_factor: int = 8) -> int:
     return replace_llama_linears_with_triton_quant(
         model=model,
         target_names=MLP_TARGET_NAMES,
         backend="triton_int4",
         quant_block_size=quant_block_size,
+        compress_factor=compress_factor,
     )
 
 
@@ -102,21 +103,23 @@ def benchmark_quant_block_sizes(
     print("INT4 measurement by quant_block_size (MLP-only quantization)")
 
     for block_size in QUANT_BLOCK_SIZE_CANDIDATES:
-        model = load_fp16_model(model_id)
-        replaced = quantize_mlp_only(model, quant_block_size=block_size)
-        quant_memory_static = get_allocated_memory_mb()
-        reset_memory_stats()
-        quant_speed = measure_generation_speed(model, inputs, num_tokens=NUM_TOKENS)
-        quant_memory_peak = get_peak_memory_mb()
+        for compress_factor in [2, 8]:
+            model = load_fp16_model(model_id)
+            replaced = quantize_mlp_only(model, quant_block_size=block_size, compress_factor=compress_factor)
+            quant_memory_static = get_allocated_memory_mb()
+            reset_memory_stats()
+            quant_speed = measure_generation_speed(model, inputs, num_tokens=NUM_TOKENS)
+            quant_memory_peak = get_peak_memory_mb()
 
-        print(
-            f"  block={block_size:<3} replaced={replaced:<4} "
-            f"speed={quant_speed:>7.1f} t/s static={quant_memory_static:>7.0f} MB peak={quant_memory_peak:>7.0f} MB"
-        )
-        rows.append((block_size, replaced, quant_speed, quant_memory_static, quant_memory_peak))
+            compress_str = "uint8" if compress_factor == 2 else "uint32"
+            print(
+                f"  block={block_size:<3} compress into {compress_str} replaced={replaced:<4} "
+                f"speed={quant_speed:>7.1f} t/s static={quant_memory_static:>7.0f} MB peak={quant_memory_peak:>7.0f} MB"
+            )
+            rows.append((block_size, replaced, quant_speed, quant_memory_static, quant_memory_peak))
 
-        del model
-        cleanup_cuda()
+            del model
+            cleanup_cuda()
 
     return rows
 

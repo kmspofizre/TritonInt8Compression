@@ -53,6 +53,7 @@ def quantize_to_int4_no_pack(
 def pack_int4_to_int32(
     weights: torch.Tensor,
     quant_block_size: int = 128,
+    compress_factor: int = 8,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Packs 8 int4 values into uint32 and returns (packed, scales).
@@ -61,11 +62,11 @@ def pack_int4_to_int32(
     effective_block_size = _choose_quant_block_size(
         cols=cols,
         requested=quant_block_size,
-        compress_factor=8,
+        compress_factor=compress_factor,
     )
     packed, scale = quant_compress_to_int4(
         weights=weights.to(torch.float16).contiguous(),
-        compress_factor=8,
+        compress_factor=compress_factor,
         quant_block_size=effective_block_size,
     )
     return packed, scale

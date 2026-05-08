@@ -26,8 +26,10 @@ class QuantLinear(nn.Module):
         device: torch.device | str | None = None,
         backend: QuantBackend = "fp16_baseline",
         quant_block_size: int = 128,
+        compress_factor: int | None = 8
     ) -> None:
         super().__init__()
+        self.compress_factor = compress_factor
         self.in_features = in_features
         self.out_features = out_features
         self.backend = backend
@@ -53,6 +55,7 @@ class QuantLinear(nn.Module):
         layer: nn.Linear,
         backend: QuantBackend = "fp16_baseline",
         quant_block_size: int = 128,
+        compress_factor: int = 8,
     ) -> "QuantLinear":
         quant_layer = cls(
             in_features=layer.in_features,
@@ -62,6 +65,7 @@ class QuantLinear(nn.Module):
             device=layer.weight.device,
             backend=backend,
             quant_block_size=quant_block_size,
+            compress_factor=compress_factor,
         )
 
         with torch.no_grad():
@@ -78,6 +82,7 @@ class QuantLinear(nn.Module):
         packed, scale = pack_int4_to_int32(
             self.weight.detach(),
             quant_block_size=self.quant_block_size,
+            compress_factor=self.compress_factor,
         )
         self.packed_weight_int32 = packed
         self.weight_scale = scale
